@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f7f8f5" />
+    <meta name="description" content="在本機管理商品、庫存與上下架狀態。" />
+    <title>商品掌櫃｜小店後台</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="主選單">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">□</span>
+          <div><strong>小店後台</strong><small>LOCAL MANAGER</small></div>
+        </div>
+        <nav class="sidebar-nav" aria-label="頁面導覽">
+          <a class="nav-link active" href="#products" aria-current="page"><span aria-hidden="true">▦</span> 商品掌櫃</a>
+        </nav>
+        <div class="sidebar-bottom">
+          <span class="local-dot" aria-hidden="true"></span>
+          <div><strong>本機儲存</strong><small>資料只保存在此瀏覽器</small></div>
+        </div>
+      </aside>
+
+      <main id="products" class="main-content">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">PRODUCT MANAGEMENT</p>
+            <h1>商品掌櫃</h1>
+            <p class="page-subtitle">集中管理商品資訊、庫存數量與販售狀態。</p>
+          </div>
+          <button id="add-product" class="button button-primary header-add" type="button"><span aria-hidden="true">＋</span> 新增商品</button>
+        </header>
+
+        <section class="overview" aria-label="商品概況">
+          <div class="stat-card"><div class="stat-top"><span>商品總數</span><span class="stat-icon purple" aria-hidden="true">▦</span></div><strong id="total-count">0</strong><small>所有已建立的商品</small></div>
+          <div class="stat-card"><div class="stat-top"><span>已上架</span><span class="stat-icon green" aria-hidden="true">↗</span></div><strong id="active-count">0</strong><small>目前開放販售</small></div>
+          <div class="stat-card"><div class="stat-top"><span>低庫存</span><span class="stat-icon amber" aria-hidden="true">!</span></div><strong id="low-count">0</strong><small>庫存 5 件以下</small></div>
+          <div class="stat-card"><div class="stat-top"><span>庫存總量</span><span class="stat-icon blue" aria-hidden="true">◫</span></div><strong id="stock-count">0</strong><small>所有商品件數加總</small></div>
+        </section>
+
+        <section class="workspace" aria-labelledby="list-heading">
+          <div class="workspace-heading">
+            <div><p class="eyebrow">YOUR CATALOG</p><h2 id="list-heading">商品列表 <span id="filtered-count" class="heading-count">0</span></h2></div>
+            <div class="backup-actions">
+              <button id="export-button" class="button button-ghost" type="button" title="匯出 JSON 備份">匯出備份</button>
+              <button id="import-button" class="button button-ghost" type="button" title="從 JSON 備份還原">匯入備份</button>
+              <input id="import-file" type="file" accept="application/json,.json" hidden />
+            </div>
+          </div>
+          <div class="toolbar">
+            <label class="search-field"><span aria-hidden="true">⌕</span><span class="sr-only">搜尋商品名稱、編號或分類</span><input id="search" type="search" placeholder="搜尋商品名稱、編號或分類..." autocomplete="off" /></label>
+            <label class="select-field"><span class="sr-only">依分類篩選</span><select id="category-filter"><option value="">所有分類</option></select></label>
+            <label class="select-field"><span class="sr-only">依上下架狀態篩選</span><select id="status-filter"><option value="">所有狀態</option><option value="active">已上架</option><option value="inactive">未上架</option></select></label>
+          </div>
+          <div id="product-list" class="product-list" aria-live="polite"></div>
+          <div id="empty-state" class="empty-state" hidden>
+            <div class="empty-icon" aria-hidden="true">□</div>
+            <h3 id="empty-title">還沒有商品</h3>
+            <p id="empty-description">新增第一件商品，開始管理你的商品目錄。</p>
+            <button id="empty-add" class="button button-primary" type="button">新增商品</button>
+          </div>
+          <p class="workspace-note">庫存與上下架狀態可直接在商品卡片調整。變更會自動儲存在此瀏覽器。</p>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="product-dialog" class="product-dialog" aria-labelledby="dialog-title">
+      <form id="product-form" novalidate>
+        <div class="dialog-header"><div><p class="eyebrow">PRODUCT DETAILS</p><h2 id="dialog-title">新增商品</h2></div><button id="close-dialog" class="icon-button" type="button" aria-label="關閉">×</button></div>
+        <div class="dialog-body">
+          <div class="field-row">
+            <label class="field">商品名稱 <span aria-hidden="true">*</span><input id="product-name" name="name" type="text" maxlength="100" required placeholder="例：手作陶瓷馬克杯" /></label>
+            <label class="field">商品編號 <span aria-hidden="true">*</span><input id="product-sku" name="sku" type="text" maxlength="50" required placeholder="例：MUG-001" /></label>
+          </div>
+          <div class="field-row">
+            <label class="field">分類 <span aria-hidden="true">*</span><input id="product-category" name="category" type="text" maxlength="50" required placeholder="例：居家生活" list="category-options" /><datalist id="category-options"></datalist></label>
+            <label class="field">價格（NT$）<span aria-hidden="true">*</span><input id="product-price" name="price" type="number" min="0" max="999999999" step="1" required placeholder="0" /></label>
+          </div>
+          <div class="field-row">
+            <label class="field">庫存數量 <span aria-hidden="true">*</span><input id="product-stock" name="stock" type="number" min="0" max="999999999" step="1" required placeholder="0" /></label>
+            <label class="field">上架狀態<select id="product-status" name="status"><option value="inactive">未上架</option><option value="active">已上架</option></select></label>
+          </div>
+          <label class="field">商品說明<textarea id="product-description" name="description" rows="4" maxlength="2000" placeholder="簡單描述這件商品...（選填）"></textarea></label>
+          <p id="form-error" class="form-error" role="alert" hidden></p>
+        </div>
+        <div class="dialog-footer"><button id="cancel-dialog" class="button button-ghost" type="button">取消</button><button class="button button-primary" type="submit">儲存商品</button></div>
+      </form>
+    </dialog>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>
