@@ -18,6 +18,7 @@ const elements = {
   authMessage: document.querySelector("#auth-message"),
   signIn: document.querySelector("#sign-in"),
   signUp: document.querySelector("#sign-up"),
+  resendConfirmation: document.querySelector("#resend-confirmation"),
   signOut: document.querySelector("#sign-out"),
   userEmail: document.querySelector("#user-email"),
   syncMessage: document.querySelector("#sync-message"),
@@ -85,6 +86,11 @@ function setSyncMessage(message, canRetry = false) {
 }
 
 function friendlyError(error) {
+  if (error?.code === "invalid_credentials" || error?.message === "Invalid login credentials") return "帳號或密碼不正確；第一次使用請按「建立帳號」。";
+  if (error?.code === "email_not_confirmed") return "信箱尚未驗證；請先完成驗證信中的步驟。";
+  if (error?.code === "email_address_not_authorized") return "Supabase 預設寄信服務只能寄給專案成員；請使用成員信箱，或設定自訂 SMTP。";
+  if (error?.code === "over_email_send_rate_limit") return "驗證信寄送太頻繁，請稍後再試。";
+  if (error?.code === "email_address_invalid") return "請使用真實的電子郵件地址，測試網域無法註冊。";
   if (error?.code === "23505") return "商品編號已存在，請使用不同編號";
   if (error?.code === "42501") return "沒有存取權限，請重新登入或檢查 Supabase 權限設定";
   if (error?.code === "PGRST205") return "找不到商品資料表，請先執行 supabase/schema.sql";
@@ -434,6 +440,7 @@ async function authenticate(mode) {
   }
   elements.signIn.disabled = true;
   elements.signUp.disabled = true;
+  elements.resendConfirmation.disabled = true;
   showAuthMessage(mode === "signUp" ? "正在建立帳號..." : "正在登入...");
   try {
     const { data, error } = mode === "signUp"
@@ -448,6 +455,35 @@ async function authenticate(mode) {
   } finally {
     elements.signIn.disabled = false;
     elements.signUp.disabled = false;
+    elements.resendConfirmation.disabled = false;
+  }
+}
+
+async function resendConfirmation() {
+  if (!database) return;
+  const email = elements.authEmail.value.trim();
+  if (!elements.authEmail.checkValidity()) {
+    showAuthMessage("請先輸入要收驗證信的電子郵件地址。", true);
+    return;
+  }
+  elements.signIn.disabled = true;
+  elements.signUp.disabled = true;
+  elements.resendConfirmation.disabled = true;
+  showAuthMessage("正在重寄驗證信...");
+  try {
+    const { error } = await database.auth.resend({
+      type: "signup",
+      email,
+      options: { emailRedirectTo: location.origin + location.pathname },
+    });
+    if (error) throw error;
+    showAuthMessage("若此信箱已有待驗證帳號，請查看收件匣及垃圾郵件匣。請勿連續重寄，以免達到寄送上限。");
+  } catch (error) {
+    showAuthMessage(friendlyError(error), true);
+  } finally {
+    elements.signIn.disabled = false;
+    elements.signUp.disabled = false;
+    elements.resendConfirmation.disabled = false;
   }
 }
 
@@ -478,6 +514,7 @@ async function initialize() {
 document.querySelector("#add-product").addEventListener("click", () => openDialog());
 elements.authForm.addEventListener("submit", (event) => { event.preventDefault(); authenticate("signIn"); });
 elements.signUp.addEventListener("click", () => authenticate("signUp"));
+elements.resendConfirmation.addEventListener("click", resendConfirmation);
 elements.signOut.addEventListener("click", async () => {
   const { error } = await database.auth.signOut();
   if (error) showToast(friendlyError(error), true);

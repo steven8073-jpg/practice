@@ -17,13 +17,14 @@
         <div class="brand"><span class="brand-mark" aria-hidden="true">□</span><div><strong>小店後台</strong><small>PRODUCT MANAGER</small></div></div>
         <p class="eyebrow">WELCOME BACK</p>
         <h1 id="auth-title">登入商品掌櫃</h1>
-        <p class="auth-intro">使用電子郵件帳號登入，安全地同步你的商品資料。</p>
+        <p class="auth-intro">第一次使用請以 Supabase 組織成員信箱按「建立帳號」，再到信箱完成驗證。按「登入」不會寄送驗證信。</p>
         <form id="auth-form">
           <label class="field">電子郵件<input id="auth-email" type="email" autocomplete="email" required placeholder="you@example.com" /></label>
           <label class="field">密碼<input id="auth-password" type="password" autocomplete="current-password" minlength="6" required placeholder="至少 6 個字元" /></label>
           <p id="auth-message" class="auth-message" role="status" aria-live="polite" hidden></p>
           <button id="sign-in" class="button button-primary" type="submit">登入</button>
           <button id="sign-up" class="button button-ghost" type="button">建立帳號</button>
+          <button id="resend-confirmation" class="text-button auth-resend" type="button">重寄驗證信</button>
         </form>
       </div>
     </section>
