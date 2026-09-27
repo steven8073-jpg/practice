@@ -4,3 +4,24 @@
 #add-product:hover{background:#941c29;border-color:#941c29}
 #add-product:active{background:#7f1823;border-color:#7f1823}
 #add-product:focus-visible{outline:3px solid #e5929a;outline-offset:3px}
+
+[hidden]{display:none!important}
+.auth-view{min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 15% 20%,#e7f1e8 0,transparent 35%),#f7f8f5}
+.auth-card{width:min(100%,420px);padding:34px;background:#fff;border:1px solid #e6ebe5;border-radius:16px;box-shadow:0 15px 45px #193c2420}
+.auth-card .brand{padding:0;margin-bottom:42px}
+.auth-card h1{font-size:27px;letter-spacing:-.04em;margin:0;color:#20372b}
+.auth-intro{font-size:13px;color:#819084;line-height:1.6;margin:9px 0 24px}
+.auth-card form{display:grid;gap:15px}
+.auth-card .button{width:100%;min-height:43px}
+.auth-message{font-size:12px;line-height:1.6;color:#266246;background:#ebf5ed;border-radius:7px;padding:10px 12px;margin:0}
+.auth-message.error{color:#a63a32;background:#fff1ef}
+.text-button{background:transparent;border:0;padding:0;color:#2d7850;font-size:11px;font-weight:700;text-decoration:underline;text-underline-offset:2px}
+.text-button:hover{color:#1b5135}
+.text-button:focus-visible{outline:2px solid #7ba98a;outline-offset:3px}
+.sidebar-bottom>div{min-width:0}
+.sidebar-bottom small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px}
+.sidebar-bottom .text-button{margin-top:9px}
+.sync-message{padding:14px 16px;border-radius:8px;background:#f1f6f1;color:#477058;font-size:12px;margin-bottom:16px;line-height:1.5}
+.sync-message .text-button{margin-left:10px}
+.migrate-button{display:block;margin:14px auto 0}
+@media(max-width:680px){.auth-card{padding:27px 22px}.auth-card .brand{margin-bottom:32px}}

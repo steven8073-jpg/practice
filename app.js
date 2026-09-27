@@ -1,11 +1,29 @@
 "use strict";
 
-const STORAGE_KEY = "local-product-manager-v1";
+const LEGACY_STORAGE_KEY = "local-product-manager-v1";
 const MAX_NUMBER = 999999999;
 const LOW_STOCK_THRESHOLD = 5;
 const currency = new Intl.NumberFormat("zh-TW", { style: "currency", currency: "TWD", maximumFractionDigits: 0 });
+const config = window.SUPABASE_CONFIG;
+const database = config?.url && config?.publishableKey && window.supabase
+  ? window.supabase.createClient(config.url, config.publishableKey)
+  : null;
 
 const elements = {
+  appShell: document.querySelector("#app-shell"),
+  authView: document.querySelector("#auth-view"),
+  authForm: document.querySelector("#auth-form"),
+  authEmail: document.querySelector("#auth-email"),
+  authPassword: document.querySelector("#auth-password"),
+  authMessage: document.querySelector("#auth-message"),
+  signIn: document.querySelector("#sign-in"),
+  signUp: document.querySelector("#sign-up"),
+  signOut: document.querySelector("#sign-out"),
+  userEmail: document.querySelector("#user-email"),
+  syncMessage: document.querySelector("#sync-message"),
+  syncText: document.querySelector("#sync-text"),
+  retryButton: document.querySelector("#retry-button"),
+  migrateLocal: document.querySelector("#migrate-local"),
   list: document.querySelector("#product-list"),
   empty: document.querySelector("#empty-state"),
   emptyTitle: document.querySelector("#empty-title"),
@@ -31,6 +49,9 @@ const elements = {
 let products = [];
 let editingId = null;
 let toastTimer;
+let currentUser = null;
+let hasLoaded = false;
+let mutationInProgress = false;
 
 function showToast(message, isError = false) {
   clearTimeout(toastTimer);
@@ -44,29 +65,79 @@ function newId() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function readProducts() {
+function readLegacyProducts() {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const saved = localStorage.getItem(LEGACY_STORAGE_KEY);
     if (!saved) return [];
     const parsed = JSON.parse(saved);
     if (!Array.isArray(parsed)) throw new Error("儲存資料格式不正確");
     return parsed.map(validateProduct);
   } catch (error) {
-    showToast("無法讀取本機資料，請檢查瀏覽器儲存設定。", true);
+    showToast("無法讀取舊版瀏覽器資料。", true);
     return [];
   }
 }
 
-function saveProducts(nextProducts, successMessage) {
+function setSyncMessage(message, canRetry = false) {
+  elements.syncText.textContent = message;
+  elements.syncMessage.hidden = !message;
+  elements.retryButton.hidden = !canRetry;
+}
+
+function friendlyError(error) {
+  if (error?.code === "23505") return "商品編號已存在，請使用不同編號";
+  if (error?.code === "42501") return "沒有存取權限，請重新登入或檢查 Supabase 權限設定";
+  if (error?.code === "PGRST205") return "找不到商品資料表，請先執行 supabase/schema.sql";
+  return error?.message || "連線失敗，請稍後重試";
+}
+
+async function loadProducts() {
+  if (!currentUser || !database) return;
+  const userId = currentUser.id;
+  setSyncMessage("正在從 Supabase 載入商品...");
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextProducts));
-    products = nextProducts;
+    const loaded = [];
+    for (let start = 0; ; start += 1000) {
+      const { data, error } = await database.from("products")
+        .select("id,name,sku,category,price,stock,status,description,created_at")
+        .order("created_at", { ascending: false }).range(start, start + 999);
+      if (error) throw error;
+      loaded.push(...data);
+      if (data.length < 1000) break;
+    }
+    if (currentUser?.id !== userId) return;
+    products = loaded.map(validateProduct);
+    hasLoaded = true;
+    setSyncMessage("");
+    elements.migrateLocal.hidden = readLegacyProducts().length === 0;
     render();
-    if (successMessage) showToast(successMessage);
+  } catch (error) {
+    if (currentUser?.id === userId) {
+      hasLoaded = false;
+      setSyncMessage(`無法載入商品：${friendlyError(error)}`, true);
+      render();
+    }
+  }
+}
+
+async function runMutation(operation, successMessage) {
+  if (mutationInProgress) return false;
+  mutationInProgress = true;
+  try {
+    const { error } = await operation();
+    if (error) throw error;
+    await loadProducts();
+    if (!hasLoaded) {
+      showToast("變更已儲存，但清單重新載入失敗；請按「重試」。", true);
+      return true;
+    }
+    showToast(successMessage);
     return true;
   } catch (error) {
-    showToast("無法儲存資料。請確認瀏覽器允許本機儲存，或釋出儲存空間。", true);
+    showToast(friendlyError(error), true);
     return false;
+  } finally {
+    mutationInProgress = false;
   }
 }
 
@@ -102,9 +173,13 @@ function labeledCell(label, content) {
   return cell;
 }
 
+function toDatabaseProduct(product) {
+  const { name, sku, category, price, stock, status, description } = product;
+  return { name, sku, category, price, stock, status, description };
+}
+
 function updateProduct(id, updates, message) {
-  const next = products.map((product) => product.id === id ? { ...product, ...updates } : product);
-  return saveProducts(next, message);
+  return runMutation(() => database.from("products").update(updates).eq("id", id).select("id").single(), message);
 }
 
 function buildProductCard(product) {
@@ -180,7 +255,7 @@ function buildProductCard(product) {
   remove.setAttribute("aria-label", `刪除 ${product.name}`);
   remove.addEventListener("click", () => {
     if (confirm(`確定要刪除「${product.name}」嗎？此操作無法復原。`)) {
-      saveProducts(products.filter((item) => item.id !== product.id), "商品已刪除");
+      runMutation(() => database.from("products").delete().eq("id", product.id).select("id").single(), "商品已刪除");
     }
   });
   actions.append(edit, remove);
@@ -215,7 +290,7 @@ function render() {
   });
   elements.filteredCount.textContent = String(filtered.length);
   elements.list.replaceChildren(...filtered.map(buildProductCard));
-  elements.empty.hidden = filtered.length !== 0;
+  elements.empty.hidden = filtered.length !== 0 || !hasLoaded;
   if (products.length === 0) {
     elements.emptyTitle.textContent = "還沒有商品";
     elements.emptyDescription.textContent = "新增第一件商品，開始管理你的商品目錄。";
@@ -253,7 +328,7 @@ function showFormError(message) {
   elements.formError.hidden = false;
 }
 
-function submitForm(event) {
+async function submitForm(event) {
   event.preventDefault();
   const form = elements.form.elements;
   let product;
@@ -276,8 +351,16 @@ function submitForm(event) {
     showFormError(error.message);
     return;
   }
-  const next = editingId ? products.map((item) => item.id === editingId ? product : item) : [product, ...products];
-  if (saveProducts(next, editingId ? "商品已更新" : "商品已新增")) closeDialog();
+  const savedId = editingId;
+  const payload = toDatabaseProduct(product);
+  const saved = await runMutation(
+    () => savedId
+      ? database.from("products").update(payload).eq("id", savedId).select("id").single()
+      : database.from("products").insert(payload).select("id").single(),
+    savedId ? "商品已更新" : "商品已新增"
+  );
+  if (saved) closeDialog();
+  else showFormError("儲存失敗，請確認連線後重試。");
 }
 
 function exportBackup() {
@@ -310,7 +393,10 @@ async function importBackup(file) {
       skus.add(sku);
     }
     if (!confirm(`將匯入 ${imported.length} 件商品，並取代目前的 ${products.length} 件商品。確定繼續嗎？`)) return;
-    saveProducts(imported.map((product) => ({ ...product, id: newId() })), "備份已匯入");
+    await runMutation(
+      () => database.rpc("replace_my_products", { items: imported.map(toDatabaseProduct) }),
+      "備份已匯入"
+    );
   } catch (error) {
     showToast(`匯入失敗：${error.message}`, true);
   } finally {
@@ -318,7 +404,87 @@ async function importBackup(file) {
   }
 }
 
+function showAuthMessage(message, isError = false) {
+  elements.authMessage.textContent = message;
+  elements.authMessage.hidden = !message;
+  elements.authMessage.classList.toggle("error", isError);
+}
+
+async function applySession(session) {
+  const user = session?.user ?? null;
+  if (currentUser?.id === user?.id) return;
+  currentUser = user;
+  products = [];
+  hasLoaded = false;
+  if (!user) showAuthMessage("");
+  elements.authView.hidden = Boolean(user);
+  elements.appShell.hidden = !user;
+  elements.userEmail.textContent = user?.email ?? "";
+  render();
+  if (user) await loadProducts();
+}
+
+async function authenticate(mode) {
+  if (!database) return;
+  const email = elements.authEmail.value.trim();
+  const password = elements.authPassword.value;
+  if (!elements.authEmail.checkValidity() || password.length < 6) {
+    showAuthMessage("請輸入有效的電子郵件與至少 6 個字元的密碼。", true);
+    return;
+  }
+  elements.signIn.disabled = true;
+  elements.signUp.disabled = true;
+  showAuthMessage(mode === "signUp" ? "正在建立帳號..." : "正在登入...");
+  try {
+    const { data, error } = mode === "signUp"
+      ? await database.auth.signUp({ email, password, options: { emailRedirectTo: location.origin + location.pathname } })
+      : await database.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    elements.authPassword.value = "";
+    if (data.session) await applySession(data.session);
+    else showAuthMessage("請到電子郵件信箱完成帳號驗證，再返回登入。密碼不會儲存在此頁面。");
+  } catch (error) {
+    showAuthMessage(friendlyError(error), true);
+  } finally {
+    elements.signIn.disabled = false;
+    elements.signUp.disabled = false;
+  }
+}
+
+async function migrateLegacyProducts() {
+  const legacy = readLegacyProducts();
+  if (!legacy.length) return;
+  if (!confirm(`將舊版瀏覽器中的 ${legacy.length} 件商品匯入 Supabase，並取代目前的 ${products.length} 件雲端商品。確定繼續嗎？`)) return;
+  const saved = await runMutation(
+    () => database.rpc("replace_my_products", { items: legacy.map(toDatabaseProduct) }),
+    "舊版商品已匯入 Supabase"
+  );
+  if (saved) elements.migrateLocal.hidden = true;
+}
+
+async function initialize() {
+  if (!database) {
+    showAuthMessage("Supabase 設定或程式庫載入失敗，請檢查 config.js 與網路連線。", true);
+    return;
+  }
+  database.auth.onAuthStateChange((_event, session) => {
+    setTimeout(() => applySession(session), 0);
+  });
+  const { data, error } = await database.auth.getSession();
+  if (error) showAuthMessage(friendlyError(error), true);
+  else await applySession(data.session);
+}
+
 document.querySelector("#add-product").addEventListener("click", () => openDialog());
+elements.authForm.addEventListener("submit", (event) => { event.preventDefault(); authenticate("signIn"); });
+elements.signUp.addEventListener("click", () => authenticate("signUp"));
+elements.signOut.addEventListener("click", async () => {
+  const { error } = await database.auth.signOut();
+  if (error) showToast(friendlyError(error), true);
+  else await applySession(null);
+});
+elements.retryButton.addEventListener("click", loadProducts);
+elements.migrateLocal.addEventListener("click", migrateLegacyProducts);
 elements.emptyAdd.addEventListener("click", () => openDialog());
 document.querySelector("#close-dialog").addEventListener("click", closeDialog);
 document.querySelector("#cancel-dialog").addEventListener("click", closeDialog);
@@ -328,8 +494,9 @@ elements.search.addEventListener("input", render);
 elements.categoryFilter.addEventListener("change", render);
 elements.statusFilter.addEventListener("change", render);
 document.querySelector("#export-button").addEventListener("click", exportBackup);
+document.querySelector("#refresh-products").addEventListener("click", loadProducts);
 document.querySelector("#import-button").addEventListener("click", () => elements.importFile.click());
 elements.importFile.addEventListener("change", () => importBackup(elements.importFile.files[0]));
 
-products = readProducts();
 render();
+initialize();
